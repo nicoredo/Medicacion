@@ -124,6 +124,32 @@ function buscarMedicamentos(texto) {
   };
 }
 
+function buscarMedicacionConDosis(texto) {
+  const resultados = new Map();
+  if (!texto) return [];
+
+  for (const [base, sinonimos] of Object.entries(terminologia.medicacion)) {
+    const patrones = [base, ...sinonimos];
+    for (const termino of patrones) {
+      const terminoEscapado = termino.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // El grupo completo de dosis es opcional
+      const pattern = `\\b${terminoEscapado}\\b(?:[^\\d\\n\\r]{0,10})?(?:\\s*(\\d+(?:[.,]\\d+)?\\s*(?:mg|mcg|g|ml|ug|u|unidades)?))?`;
+      const expresion = new RegExp(pattern, "gi");
+
+      let match;
+      while ((match = expresion.exec(texto))) {
+        if (!contieneNegacion(match[0], termino) && !resultados.has(base)) {
+          const dosis = match[1] ? ` ${match[1].trim().replace(/\\s+/g, "")}` : "";
+          resultados.set(base, `${base}${dosis}`);
+          break;
+        }
+      }
+    }
+  }
+
+  return Array.from(resultados.values());
+}
 
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.tipo === 'popupListo') {
@@ -131,7 +157,7 @@ function buscarMedicamentos(texto) {
         try {
           const texto = document.body.innerText.toLowerCase();
           console.log("Texto clínico detectado:", texto.slice(0, 300));
-          const medicamentos = buscarMedicamentos(texto);
+       const medicamentos = buscarMedicacionConDosis(texto);
           const { nombreCompleto, dni } = extraerNombreYDNI();
 
           console.log("Medicamentos detectados:", medicamentos);

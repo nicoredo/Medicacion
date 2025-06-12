@@ -24,17 +24,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Limpiar tabla antes de agregar nuevas filas
     document.getElementById('tbodyMedicacion').innerHTML = '';
 
-    medicamentos.forEach(nombre => agregarFila(nombre));
+    medicamentos.forEach(nombreDosis => {
+  const match = nombreDosis.match(/^(.*?)\s+(\d+.*)$/);
+  const nombre = match ? match[1] : nombreDosis;
+  const dosis = match ? match[2] : '';
+  agregarFila(nombre, dosis);
+});
   }
 });
 
 // 3. Función para agregar fila
-function agregarFila(nombre = '') {
+function agregarFila(nombre = '', dosis = "") {
   const tbody = document.getElementById('tbodyMedicacion');
   const fila = document.createElement('tr');
   fila.innerHTML = `
     <td><input type="text" list="listaMedicamentos" value="${nombre}"></td>
-    <td><input type="text" placeholder="Ej: 10mg"></td>
+  <td><input type="text" value="${dosis}" placeholder="Ej: 10mg"></td>
     <td><input type="text"></td>
     <td><input type="text"></td>
     <td><input type="text"></td>
@@ -108,122 +113,89 @@ document.addEventListener('DOMContentLoaded', () => {
       // Generar PDF
 
 document.getElementById("btnPDF").addEventListener("click", () => {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape" });
 
-    const logo = new Image();
-    logo.src = "./logo.png"; // Debe estar en la misma carpeta
+  const logo = new Image();
+  logo.src = "./logo.png";
 
-    logo.onload = () => {
-        // 1. Logo centrado arriba
-        doc.addImage(logo, "PNG", 80, 10, 50, 20);
+  logo.onload = () => {
+    doc.addImage(logo, "PNG", 120, 10, 50, 20); // centrado aprox
 
-        // 2. Nombre y DNI del paciente
-        const nombre = document.getElementById("nombrePaciente").textContent.trim();
-        const dni = document.getElementById("dniPaciente").textContent.trim();
-        doc.setFontSize(14);
-        doc.text(`Paciente: ${nombre} - DNI: ${dni}`, 105, 40, { align: "center" });
+    const nombre = document.getElementById("nombrePaciente").textContent.trim();
+    const dni = document.getElementById("dniPaciente").textContent.trim();
+    doc.setFontSize(16);
+    doc.text(`Paciente: ${nombre} - DNI: ${dni}`, 148, 40, { align: "center" });
 
-        // 3. Extraer tabla HTML
-        const table = document.getElementById("tablaMedicacion");
-        const headers = [];
-        const data = [];
+    const table = document.getElementById("tablaMedicacion");
+    const headers = [];
+    const data = [];
 
-        table.querySelectorAll("thead tr th").forEach(th => headers.push(th.textContent.trim()));
-        table.querySelectorAll("tbody tr").forEach(row => {
-            const rowData = [];
-            row.querySelectorAll("td").forEach((cell, idx) => {
-                if (idx < headers.length - 1) { // evitar columna "X"
-                    const input = cell.querySelector("input");
-                    rowData.push(input ? input.value : cell.textContent.trim());
-                }
-            });
-            data.push(rowData);
-        });
+    table.querySelectorAll("thead tr th").forEach(th => headers.push(th.textContent.trim()));
+    table.querySelectorAll("tbody tr").forEach(row => {
+      const rowData = [];
+      row.querySelectorAll("td").forEach((cell, idx) => {
+        if (idx < headers.length - 1) {
+          const input = cell.querySelector("input");
+          rowData.push(input ? input.value : cell.textContent.trim());
+        }
+      });
+      data.push(rowData);
+    });
 
-        // 4. Tabla con estilos centrados y bordes especiales para columnas de horarios
-        const columnasHorario = ["mañana", "mediodía", "tarde", "cena"].map(c => c.toLowerCase());
-
-   // Reemplazar configuración de doc.autoTable por esta
-doc.autoTable({
-    startY: 50,
-    head: [[
-        "Medicamento / Dosis", "Mañana", "Mediodía", "Tarde", "Noche"
-    ]],
-    body: data.map(row => {
+    // 🧩 autoTable sin errores de ancho
+    doc.autoTable({
+      startY: 50,
+      head: [["Medicamento / Dosis", "Mañana", "Mediodía", "Tarde", "Noche"]],
+      body: data.map(row => {
         const [medicamento, dosis, ...horarios] = row;
         return [`${medicamento} ${dosis}`, ...horarios];
-    }),
-    styles: {
+      }),
+      styles: {
         halign: 'center',
         valign: 'middle',
-        fontSize: 11,
+        fontSize: 13,
         lineWidth: 0.2,
         lineColor: [180, 180, 180]
-    },
-    headStyles: {
+      },
+      headStyles: {
         fillColor: [180, 210, 255],
         textColor: 20,
         fontStyle: 'bold'
-    },
-    alternateRowStyles: {
+      },
+      alternateRowStyles: {
         fillColor: [245, 250, 255]
-    },
-    columnStyles: {
-        0: { cellWidth: 70 }, // Medicamento / Dosis
-        1: { cellWidth: 25 },
-        2: { cellWidth: 25 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 25 }
-    },
-    didDrawCell: function (data) {
-        const colIndex = data.column.index;
-        const textoColumna = headers[colIndex]?.toLowerCase();
-        const columnasHorario = ["mañana", "mediodía", "tarde", "noche"];
+      },
+      tableWidth: "auto" // 👉 evita errores por ancho fijo
+    });
 
-        // Ocultar línea entre columnas 0 y 1
-        if (colIndex === 1) {
-            data.cell.styles.lineLeftWidth = 0;
-        }
+    const anotaciones = document.querySelector("textarea").value.trim();
+    if (anotaciones) {
+      doc.setFontSize(12);
+      doc.text("Anotaciones:", 10, doc.lastAutoTable.finalY + 10);
+      const lines = doc.splitTextToSize(anotaciones, 270);
+      doc.text(lines, 10, doc.lastAutoTable.finalY + 18);
+    }
 
-        // Dibujar solo líneas verticales para columnas de horario
-        if (columnasHorario.includes(textoColumna)) {
-            doc.setDrawColor(160);
-            doc.setLineWidth(0.2);
-            doc.line(data.cell.x, data.cell.y, data.cell.x, data.cell.y + data.cell.height); // izquierda
-            doc.line(data.cell.x + data.cell.width, data.cell.y, data.cell.x + data.cell.width, data.cell.y + data.cell.height); // derecha
-        }
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    const pieTexto = "Para recetas online enviar foto de esta Tabla a: consultoriopulsar@gmail.com o a nuestro Whatsapp: 223-5606364";
+    const pieLineas = doc.splitTextToSize(pieTexto, 270);
+    const pieY = 200 + (doc.lastAutoTable.finalY || 60);
+    doc.text(pieLineas, 148, pieY, { align: "center" });
 
-        // Quitar líneas horizontales
-        if (data.section === 'body' || data.section === 'head') {
-            data.cell.styles.lineWidth = 0;
-        }
-    },
-    tableLineWidth: 0,
-    tableLineColor: 255
+    // 📄 Mostrar el PDF en nueva pestaña y disparar impresión
+   const blob = doc.output("blob");
+const url = URL.createObjectURL(blob);
+const win = window.open(url);
+if (win) {
+  win.onload = () => {
+    win.focus();
+    win.print();
+  };
+} else {
+  alert("Por favor permití ventanas emergentes para imprimir el PDF.");
+}
+
+  };
 });
-
-
-        // 5. Anotaciones
-        const anotaciones = document.querySelector("textarea").value.trim();
-        if (anotaciones) {
-            doc.setFontSize(10);
-            doc.text("Anotaciones:", 10, doc.lastAutoTable.finalY + 10);
-            const lines = doc.splitTextToSize(anotaciones, 180);
-            doc.text(lines, 10, doc.lastAutoTable.finalY + 18);
-        }
-
-        // 6. Pie de página
-        doc.setFontSize(12);
-        doc.setTextColor(100);
-        const pieTexto = "Para recetas online enviar foto de esta Tabla a: consultoriopulsar@gmail.com o a nuestro Whatsapp: 223-5606364";
-        const pieLineas = doc.splitTextToSize(pieTexto, 180);
-        const pieY = 285 - (pieLineas.length - 1) * 6;
-        doc.text(pieLineas, 105, pieY, { align: "center" });
-
-        // 7. Guardar PDF
-        const filename = `Medicacion${nombre.replace(/ /g, "-") || "paciente"}.pdf`;
-        doc.save(filename);
-    };
-});
-
